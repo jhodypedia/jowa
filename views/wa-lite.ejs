@@ -1,26 +1,19 @@
 <%- include('partials/header') %>
 
-<div class="container py-4">
-  <div class="card">
-    <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center">
-        <h5>Member Panel</h5>
-        <button id="btn-logout-lite" class="btn btn-outline-danger btn-sm">Logout</button>
-      </div>
-
-      <div id="memberInfo" class="mt-3 small text-muted"></div>
-
-      <hr>
-
-      <div id="memberContent">
-        <form id="memberSend">
-          <input name="jid" class="form-control mb-2" placeholder="62812...@s.whatsapp.net" required>
-          <textarea name="text" class="form-control mb-2" rows="3" placeholder="Pesan..." required></textarea>
-          <button class="btn btn-primary">Kirim</button>
-        </form>
-      </div>
-    </div>
-  </div>
+<div class="container py-5">
+  <h3>Member Panel</h3>
+  <p class="text-muted">Member hanya dapat mengakses fitur yang diizinkan (jika premium).</p>
+  <div id="memberContent"></div>
 </div>
 
-<script src="/js/member.js"></script>
+<% scripts = `<script>
+  // simple check and UI
+  (async ()=>{
+    const token = localStorage.getItem('token');
+    if (!token) return window.location.href = '/';
+    const r = await fetch('/api/auth/me', { headers:{ Authorization: 'Bearer '+token }});
+    const j = await r.json();
+    if (!j.ok) return window.location.href = '/';
+    document.getElementById('memberContent').innerHTML = j.user.premium ? '<div class="alert alert-success">Anda premium — fitur tersedia</div>' : '<div class="alert alert-warning">Anda bukan premium — tidak ada akses</div>';
+  })();
+</script>` %>
