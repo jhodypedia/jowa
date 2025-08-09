@@ -1,12 +1,28 @@
-// models/message.js
 export default (sequelize, DataTypes) => {
-  const Message = sequelize.define('Message', {
-    chatId: { type: DataTypes.STRING, allowNull: false },
-    sender: { type: DataTypes.STRING, allowNull: false },
-    content: { type: DataTypes.TEXT, allowNull: false },
-    type: { type: DataTypes.STRING, defaultValue: 'text' }
+  const Message = sequelize.define("Message", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true
+    },
+    content: {
+      type: DataTypes.TEXT,
+      allowNull: false
+    },
+    status: {
+      type: DataTypes.STRING,
+      defaultValue: "sent"
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    contactId: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    }
   }, {
-    tableName: 'messages'
+    tableName: "messages"
   });
 
   return Message;
