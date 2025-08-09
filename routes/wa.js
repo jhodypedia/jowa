@@ -11,6 +11,7 @@ router.get("/status", verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 
+// qr (admin)
 router.get("/qr", verifyToken, isAdmin, (req, res) => {
   const waWrapper = req.app.locals.waWrapper;
   const qr = waWrapper.getLastQr();
