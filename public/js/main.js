@@ -4,11 +4,13 @@ window.apiFetch = async function(url, opts = {}) {
   const token = localStorage.getItem("token");
   if (token) opts.headers["Authorization"] = "Bearer " + token;
   if (!opts.method) opts.method = "GET";
-  const res = await fetch(url, opts);
-  if (res.headers.get("content-type")?.includes("application/json")) {
-    return res.json();
-  } else {
+  try {
+    const res = await fetch(url, opts);
+    const ctype = res.headers.get("content-type") || "";
+    if (ctype.includes("application/json")) return res.json();
     return res;
+  } catch (e) {
+    throw e;
   }
 };
 
@@ -17,42 +19,23 @@ window.showLoading = function() {
     const el = document.createElement('div');
     el.id = 'global-loading';
     el.className = 'loading-overlay';
+    el.style.display = 'flex';
     el.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Memproses...</div></div>';
     document.body.appendChild(el);
-  }
-  document.getElementById('global-loading').style.display = 'flex';
-};
-window.hideLoading = function() {
-  const el = document.getElementById('global-loading');
-  if (el) el.style.display = 'none';
+  } else document.getElementById('global-loading').style.display = 'flex';
 };
 
-// set current nav user (call on page load)
+window.hideLoading = function(){ const el = document.getElementById('global-loading'); if (el) el.style.display = 'none'; };
+
 window.setNavUser = async function() {
-  const token = localStorage.getItem("token");
-  const elName = document.getElementById("nav-user-name");
-  const elRole = document.getElementById("nav-user-role");
-  if (!token) {
-    if (elName) elName.innerText = "—";
-    if (elRole) elRole.innerText = "—";
-    return;
-  }
   try {
-    const r = await apiFetch("/api/auth/me", { headers: { Authorization: "Bearer " + token } });
+    const r = await apiFetch('/api/auth/me');
     if (r.ok && r.user) {
-      if (elName) elName.innerText = r.user.username;
-      if (elRole) elRole.innerText = r.user.role + (r.user.premium ? " • premium" : "");
-    } else {
-      if (elName) elName.innerText = "—";
-      if (elRole) elRole.innerText = "—";
+      const name = r.user.username || r.user.email;
+      const nameEl = document.getElementById('nav-user-name');
+      const roleEl = document.getElementById('nav-user-role');
+      if (nameEl) nameEl.innerText = name;
+      if (roleEl) roleEl.innerText = r.user.role + (r.user.premium ? ' • premium' : '');
     }
-  } catch(e) {}
+  } catch(e){}
 };
-
-// logout handler for header buttons
-document.addEventListener('click', function(e){
-  if (e.target && (e.target.id === 'btn-logout-top' || e.target.id === 'btn-logout')) {
-    localStorage.removeItem('token');
-    window.location.href = '/';
-  }
-});
