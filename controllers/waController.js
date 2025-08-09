@@ -1,7 +1,11 @@
 // controllers/waController.js
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion
+} from "@whiskeysockets/baileys";
+import pino from "pino";
 import qrcode from "qrcode";
-import P from "pino";
 import fs from "fs";
 import path from "path";
 
