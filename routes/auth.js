@@ -1,10 +1,13 @@
 // routes/auth.js
 import express from "express";
-import { register, login, me } from "../controllers/authController.js";
+import { register, login, logout, me } from "../controllers/authController.js";
+import { verifyToken, isAdmin } from "../middleware/auth.js";
 const router = express.Router();
 
-router.post("/register", register);
+// admin-only register
+router.post("/register", verifyToken, isAdmin, register);
 router.post("/login", login);
-router.get("/me", me);
+router.post("/logout", verifyToken, logout);
+router.get("/me", verifyToken, me);
 
 export default router;
