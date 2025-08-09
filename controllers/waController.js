@@ -1,8 +1,14 @@
 // controllers/waController.js
-import baileys from "@whiskeysockets/baileys";
-const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = baileys;
-import P from "pino";
+import baileysPkg from "@whiskeysockets/baileys";
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  downloadContentFromMessage
+} = baileysPkg;
+
 import qrcode from "qrcode";
+import pino from "pino";
 import fs from "fs";
 import path from "path";
 
@@ -15,7 +21,7 @@ export default class WAWrapper {
     this.sock = null;
     this.lastQr = null;
     this.isInitializing = false;
-    this.logger = P({ level: "silent" });
+    this.logger = pino({ level: "silent" });
   }
 
   getLastQr() { return this.lastQr; }
@@ -29,18 +35,19 @@ export default class WAWrapper {
 
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
-      // optional: fetch version
-      let version = undefined;
+      let version;
       try {
         const v = await fetchLatestBaileysVersion();
         version = v.version;
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        version = undefined;
+      }
 
       this.sock = makeWASocket({
         auth: state,
         version,
-        printQRInTerminal: false,
         logger: this.logger,
+        printQRInTerminal: false,
         getMessage: async () => ({})
       });
 
@@ -48,43 +55,46 @@ export default class WAWrapper {
 
       this.sock.ev.on("connection.update", async (update) => {
         this.io.emit("connection.update", update);
-        try { await this.db.Log.create({ type: "connection.update", message: JSON.stringify(update) }); } catch(e){}
+        try {
+          if (update.qr) {
+            try {
+              const dataUrl = await qrcode.toDataURL(update.qr, { errorCorrectionLevel: "M" });
+              this.lastQr = dataUrl;
+              this.io.emit("qr", dataUrl);
+            } catch (e) {
+              this.io.emit("qr", update.qr);
+            }
+          }
 
-        if (update.qr) {
-          try {
-            const dataUrl = await qrcode.toDataURL(update.qr, { errorCorrectionLevel: "M" });
-            this.lastQr = dataUrl;
-            this.io.emit("qr", dataUrl);
-          } catch (e) {
-            this.io.emit("qr", update.qr);
+          if (update.connection === "open") {
+            this.lastQr = null;
+            this.io.emit("ready");
+            await this.db.Log.create({ type: "connection", message: "connected" }).catch(()=>{});
+            this.io.emit("log", "WA connected");
           }
-        }
-        if (update.connection === "open") {
-          this.lastQr = null;
-          this.io.emit("ready");
-        }
-        if (update.connection === "close") {
-          const last = update.lastDisconnect || {};
-          this.io.emit("log", `[WA] closed ${JSON.stringify(last)}`);
-          try { await this.db.Log.create({ type: "connection.close", message: JSON.stringify(last) }); } catch(e){}
-          try { if (this.sock?.ev) this.sock.ev.removeAllListeners(); } catch(e){}
-          this.sock = null;
-          // if logout (statusCode 401) -> clear auth & wait for fresh login
-          const err = last?.error;
-          const statusCode = err?.output?.statusCode;
-          if (statusCode === 401) {
-            try { fs.rmSync(AUTH_FOLDER, { recursive: true, force: true }); } catch(e){}
-            setTimeout(()=> this.init().catch(()=>{}), 1000);
-          } else {
-            setTimeout(()=> this.init().catch(()=>{}), 3000);
+
+          if (update.connection === "close") {
+            const last = update.lastDisconnect || {};
+            this.io.emit("log", `[WA] closed ${JSON.stringify(last)}`);
+            try { await this.db.Log.create({ type: "connection.close", message: JSON.stringify(last) }); } catch(e){}
+            try { if (this.sock?.ev) this.sock.ev.removeAllListeners(); } catch(e){}
+            this.sock = null;
+            const err = last?.error;
+            const statusCode = err?.output?.statusCode;
+            if (statusCode === 401) {
+              try { fs.rmSync(AUTH_FOLDER, { recursive: true, force: true }); } catch(e){}
+              setTimeout(()=> this.init().catch(()=>{}), 1000);
+            } else {
+              setTimeout(()=> this.init().catch(()=>{}), 3000);
+            }
           }
+        } catch (e) {
+          console.error("connection.update handler err", e);
         }
       });
 
-      // messages.upsert
       this.sock.ev.on("messages.upsert", async (m) => {
         this.io.emit("messages.upsert", m);
-        // simpan pesan ke DB
         try {
           const msgs = m.messages || [];
           for (const mm of msgs) {
@@ -96,12 +106,12 @@ export default class WAWrapper {
               raw: mm,
               timestamp: new Date()
             });
-            // if message has media, you can auto-download if needed
           }
-        } catch (e) { console.error("save message err", e); }
+        } catch (e) {
+          console.error("save incoming msg err", e);
+        }
       });
 
-      // contacts.upsert
       this.sock.ev.on("contacts.upsert", async (c) => {
         this.io.emit("contacts.upsert", c);
         try {
@@ -122,31 +132,33 @@ export default class WAWrapper {
     }
   }
 
-  // --- utility helpers that routes will call ---
+  async status() {
+    if (!this.sock) return { connected: false };
+    return { connected: true };
+  }
+
   async sendText(jid, text) {
     if (!this.sock) throw new Error("WA not connected");
     return this.sock.sendMessage(jid, { text });
   }
 
-  async sendMedia(jid, bufferOrPath, filename, mimetype, caption = "") {
+  async sendMediaFromBuffer(jid, buffer, filename, mimetype, caption = "") {
     if (!this.sock) throw new Error("WA not connected");
     const mt = (mimetype || "").toLowerCase();
-    const attach = {};
-    if (Buffer.isBuffer(bufferOrPath)) {
-      attach.buffer = bufferOrPath;
-    } else {
-      // path
-      attach.path = bufferOrPath;
-    }
-    if (mt.startsWith("image/")) return this.sock.sendMessage(jid, { image: attach.path ? { url: attach.path } : bufferOrPath, caption, mimetype: mt });
-    if (mt.startsWith("video/")) return this.sock.sendMessage(jid, { video: attach.path ? { url: attach.path } : bufferOrPath, caption, mimetype: mt });
-    if (mt.startsWith("audio/")) return this.sock.sendMessage(jid, { audio: attach.path ? { url: attach.path } : bufferOrPath, mimetype: mt });
-    return this.sock.sendMessage(jid, { document: attach.path ? { url: attach.path } : bufferOrPath, fileName: filename || "file", mimetype: mt, caption });
+    if (mt.startsWith("image/")) return this.sock.sendMessage(jid, { image: buffer, caption, mimetype: mt });
+    if (mt.startsWith("video/")) return this.sock.sendMessage(jid, { video: buffer, caption, mimetype: mt });
+    if (mt.startsWith("audio/")) return this.sock.sendMessage(jid, { audio: buffer, mimetype: mt });
+    return this.sock.sendMessage(jid, { document: buffer, fileName: filename || "file", mimetype: mt, caption });
   }
 
-  async downloadMediaFromMessage(message) {
+  async downloadMedia(message) {
     if (!this.sock) throw new Error("WA not connected");
-    const media = message.message?.imageMessage || message.message?.videoMessage || message.message?.documentMessage || message.message?.audioMessage || message.message?.stickerMessage;
+    const media =
+      message.message?.imageMessage ||
+      message.message?.videoMessage ||
+      message.message?.documentMessage ||
+      message.message?.audioMessage ||
+      message.message?.stickerMessage;
     if (!media) throw new Error("No media in message");
     let mediaType = "document";
     if (message.message?.imageMessage) mediaType = "image";
@@ -155,8 +167,7 @@ export default class WAWrapper {
     const stream = await downloadContentFromMessage(media, mediaType);
     const bufs = [];
     for await (const chunk of stream) bufs.push(Buffer.from(chunk));
-    const buffer = Buffer.concat(bufs);
-    return buffer;
+    return Buffer.concat(bufs);
   }
 
   async getContacts() {
@@ -171,31 +182,18 @@ export default class WAWrapper {
     return Object.values(store);
   }
 
-  async presenceSubscribe(jid) {
+  async broadcast(jids = [], text = "") {
     if (!this.sock) throw new Error("WA not connected");
-    return this.sock.presenceSubscribe(jid);
-  }
-
-  async groupCreate(subject, participants = []) {
-    if (!this.sock) throw new Error("WA not connected");
-    return this.sock.groupCreate(subject, participants);
-  }
-
-  async groupLeave(jid) {
-    if (!this.sock) throw new Error("WA not connected");
-    return this.sock.groupLeave(jid);
-  }
-
-  async profileGet(jid) {
-    if (!this.sock) throw new Error("WA not connected");
-    return this.sock.profilePictureUrl(jid).catch(()=>null);
-  }
-
-  async fetchLatestVersion() {
-    try {
-      const v = await fetchLatestBaileysVersion();
-      return v.version;
-    } catch (e) { return null; }
+    const results = [];
+    for (const j of jids) {
+      try {
+        const r = await this.sock.sendMessage(j, { text });
+        results.push({ jid: j, ok: true, result: r });
+      } catch (e) {
+        results.push({ jid: j, ok: false, error: String(e) });
+      }
+    }
+    return results;
   }
 
   async logout() {
