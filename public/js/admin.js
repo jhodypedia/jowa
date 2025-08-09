@@ -2,229 +2,266 @@
 (async function(){
   await setNavUser();
 
-  const socket = io();
-  const token = localStorage.getItem("token");
-  if (!token) { location.href = '/'; return; }
+  // sidebar toggle (mobile)
+  const toggleBtn = document.getElementById('btnToggleSidebar');
+  if (toggleBtn) toggleBtn.addEventListener('click', () => {
+    const sb = document.getElementById('adminSidebar');
+    if (!sb) return;
+    sb.classList.toggle('show');
+  });
 
-  // sidebar click
-  document.getElementById("left-menu").addEventListener("click", async (ev) => {
+  // logout handlers
+  document.getElementById('btn-logout-top')?.addEventListener('click', ()=> { localStorage.removeItem('token'); location.href = '/'; });
+  document.getElementById('btn-logout-side')?.addEventListener('click', ()=> { localStorage.removeItem('token'); location.href = '/'; });
+
+  // socket io
+  const socket = io();
+  socket.on('qr', (data) => {
+    const img = document.getElementById('qrImage');
+    const pre = document.getElementById('qrRaw');
+    if (img) { img.src = data; img.style.display = ''; }
+    if (pre) pre.style.display = 'none';
+  });
+  socket.on('ready', ()=> {
+    document.getElementById('waState').innerText = 'Connected';
+    toastr.success('WhatsApp connected');
+  });
+  socket.on('connection.update', (u) => { document.getElementById('waState').innerText = u.connection || JSON.stringify(u); });
+  socket.on('log', (m) => {
+    const logsArea = document.getElementById('logsArea');
+    if (logsArea) logsArea.insertAdjacentHTML('afterbegin', `<div class="border-bottom py-1 small text-muted">${new Date().toLocaleString()} • ${typeof m === 'string' ? m : JSON.stringify(m)}</div>`);
+  });
+
+  // left menu click
+  document.getElementById('adminSidebar')?.addEventListener('click', async (ev) => {
     const a = ev.target.closest('a[data-page]');
     if (!a) return;
     ev.preventDefault();
-    document.querySelectorAll('#left-menu a').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('#adminSidebar a').forEach(x=>x.classList.remove('active'));
     a.classList.add('active');
     const page = a.getAttribute('data-page');
-    await loadPage(page);
+    await loadAdminPage(page);
   });
 
-  // initial
-  await loadPage('dashboard');
+  // initial load
+  await loadAdminPage('dashboard');
 
-  // socket events
-  socket.on("qr", (dataUrl) => {
-    const img = document.getElementById('qrImage');
-    const pre = document.getElementById('qrRaw');
-    if (img) { img.src = dataUrl; img.style.display = ''; }
-    if (pre) { pre.style.display = 'none'; }
-  });
-  socket.on("ready", () => {
-    document.getElementById('waState').innerText = 'Connected';
-    toastr.success("WhatsApp connected");
-  });
-  socket.on("connection.update", (u) => {
-    document.getElementById('waState').innerText = u.connection || JSON.stringify(u);
-    addLog("connection.update " + JSON.stringify(u));
-  });
-  socket.on("log", (m) => addLog(m));
-  socket.on("messages.upsert", (m) => addLog("message: " + JSON.stringify(m)));
+  // modal instance
+  const userModalEl = document.getElementById('userModal');
+  const userModal = userModalEl ? new bootstrap.Modal(userModalEl) : null;
 
-  // utilities
-  function addLog(txt) {
-    const logs = document.getElementById('logs');
-    if (!logs) return;
-    const d = document.createElement('div');
-    d.textContent = new Date().toLocaleString() + ' • ' + txt;
-    logs.prepend(d);
-  }
-
-  async function loadPage(name) {
-    const container = document.getElementById('pageArea');
-    // keep QR area if dashboard
-    if (name === 'dashboard') {
-      container.innerHTML = document.querySelector('#qrContainer').outerHTML;
-      return;
-    }
+  async function loadAdminPage(page) {
+    const area = document.getElementById('adminPages');
+    if (!area) return;
     showLoading();
     try {
-      if (name === 'send') {
-        container.innerHTML = `
+      if (page === 'dashboard') {
+        area.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-4"><div class="card p-3"><h6>Koneksi</h6><div id="statConnection" class="fs-5 text-success">—</div></div></div>
+            <div class="col-md-4"><div class="card p-3"><h6>Pesan tersimpan</h6><div id="statMessages" class="fs-5">—</div></div></div>
+            <div class="col-md-4"><div class="card p-3"><h6>Kontak</h6><div id="statContacts" class="fs-5">—</div></div></div>
+          </div>
+        `;
+        // optional stats load
+        try {
+          const msgs = await apiFetch('/api/messages');
+          if (msgs && msgs.ok) document.getElementById('statMessages').innerText = msgs.messages.length;
+          else document.getElementById('statMessages').innerText = '-';
+          const contacts = await apiFetch('/api/contacts');
+          if (contacts && contacts.ok) document.getElementById('statContacts').innerText = contacts.contacts.length;
+        } catch(e){}
+      }
+
+      else if (page === 'send') {
+        area.innerHTML = `
           <div class="card p-3">
-            <h5>Kirim Pesan Teks</h5>
-            <form id="form-send-text">
-              <input name="jid" class="form-control mb-2" placeholder="628123...@s.whatsapp.net" required>
+            <h5>Kirim Pesan</h5>
+            <form id="formSendText">
+              <input name="jid" class="form-control mb-2" placeholder="62812...@s.whatsapp.net" required>
               <textarea name="text" class="form-control mb-2" rows="4" placeholder="Pesan..." required></textarea>
-              <div class="d-flex gap-2">
-                <button class="btn btn-primary">Kirim</button>
-                <button id="btn-test-broadcast" class="btn btn-outline-secondary">Broadcast ke semua kontak</button>
-              </div>
+              <button class="btn btn-primary">Kirim</button>
             </form>
-          </div>`;
-        document.getElementById('form-send-text').addEventListener('submit', async (e)=>{
+          </div>
+        `;
+        document.getElementById('formSendText').addEventListener('submit', async (e)=>{
           e.preventDefault();
           const jid = e.target.jid.value.trim(), text = e.target.text.value.trim();
-          if (!jid || !text) return toastr.error("JID & text required");
+          if (!jid || !text) return toastr.error('JID & pesan diperlukan');
           showLoading();
           try {
-            const r = await apiFetch('/api/messages/send', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ jid, text }) });
-            if (r.ok) { toastr.success('Terkirim'); e.target.reset(); addLog('sent text to '+jid); } else toastr.error(r.message || r.error || 'Gagal');
+            const r = await apiFetch('/api/messages/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jid, text }) });
+            if (r.ok) { toastr.success('Terkirim'); e.target.reset(); } else toastr.error(r.error || r.message || 'Gagal');
           } catch (err) { toastr.error('Error'); }
-          hideLoading();
-        });
-        document.getElementById('btn-test-broadcast').addEventListener('click', async (ev)=>{
-          ev.preventDefault();
-          if (!confirm('Kirim broadcast simulasi ke semua kontak di DB?')) return;
-          showLoading();
-          try {
-            const contacts = await apiFetch('/api/contacts', { headers: {} });
-            if (!contacts.ok) { toastr.error('Gagal ambil kontak'); hideLoading(); return; }
-            for (const c of contacts.contacts) {
-              await apiFetch('/api/messages/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jid: c.id || c.waId, text: 'Broadcast test' }) });
-            }
-            toastr.success('Broadcast selesai');
-          } catch(e) { toastr.error('Error broadcast'); }
           hideLoading();
         });
       }
 
-      else if (name === 'send-media') {
-        container.innerHTML = `
+      else if (page === 'send-media') {
+        area.innerHTML = `
           <div class="card p-3">
             <h5>Kirim Media</h5>
-            <form id="form-send-media" enctype="multipart/form-data">
-              <input name="jid" class="form-control mb-2" placeholder="628123...@s.whatsapp.net" required>
+            <form id="formSendMedia" enctype="multipart/form-data">
+              <input name="jid" class="form-control mb-2" placeholder="62812...@s.whatsapp.net" required>
               <input type="file" name="file" class="form-control mb-2" required>
               <input name="caption" class="form-control mb-2" placeholder="Caption (opsional)">
-              <button class="btn btn-primary">Kirim Media</button>
+              <button class="btn btn-primary">Kirim</button>
             </form>
-          </div>`;
-        document.getElementById('form-send-media').addEventListener('submit', async (e)=>{
+          </div>
+        `;
+        document.getElementById('formSendMedia').addEventListener('submit', async (e)=>{
           e.preventDefault();
-          const form = e.target;
-          const data = new FormData(form);
+          const fd = new FormData(e.target);
           showLoading();
           try {
             const token = localStorage.getItem('token');
-            const res = await fetch('/api/messages/sendmedia', { method:'POST', headers: { 'Authorization': 'Bearer '+token }, body: data });
+            const res = await fetch('/api/messages/sendmedia', { method:'POST', headers: { 'Authorization': 'Bearer '+token }, body: fd });
             const j = await res.json();
-            if (j.ok) { toastr.success('Media terkirim'); form.reset(); addLog('sent media to '+data.get('jid')); }
-            else toastr.error(j.error || j.message || 'Gagal');
+            if (j.ok) { toastr.success('Media terkirim'); e.target.reset(); } else toastr.error(j.error || j.message || 'Gagal');
           } catch (err) { toastr.error('Error upload'); }
           hideLoading();
         });
       }
 
-      else if (name === 'contacts') {
-        container.innerHTML = `<div class="card p-3"><h5>Kontak</h5><div id="contactsList" class="mt-2"></div></div>`;
-        const list = document.getElementById('contactsList');
-        showLoading();
-        const r = await apiFetch('/api/contacts');
-        hideLoading();
-        if (!r.ok) return list.innerHTML = `<div class="text-danger">Gagal: ${r.error||r.message}</div>`;
-        list.innerHTML = r.contacts.map(c => `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
-          <div><strong>${c.name || c.waId}</strong><div class="small text-muted">${c.waId || c.id}</div></div>
-          <div><button data-jid="${c.waId || c.id}" class="btn btn-sm btn-outline-primary btn-send">Kirim</button></div>
-        </div>`).join('');
-        list.querySelectorAll('.btn-send').forEach(btn=>btn.addEventListener('click', (ev)=>{
-          const jid = ev.target.dataset.jid;
-          // open send page and populate
-          document.querySelector('#left-menu a[data-page="send"]').click();
-          setTimeout(()=> { document.querySelector('#form-send-text input[name=jid]').value = jid; }, 300);
-        }));
+      else if (page === 'contacts') {
+        area.innerHTML = `<div class="card p-3"><h5>Kontak</h5><div id="contactsList" class="mt-2">Memuat...</div></div>`;
+        try {
+          const r = await apiFetch('/api/contacts');
+          if (!r.ok) return document.getElementById('contactsList').innerHTML = `<div class="text-danger">Gagal: ${r.error||r.message}</div>`;
+          const list = r.contacts || [];
+          document.getElementById('contactsList').innerHTML = list.map(c => `<div class="d-flex justify-content-between align-items-center border-bottom py-2">
+            <div><strong>${c.name||c.waId||c.id}</strong><div class="small text-muted">${c.waId||c.id}</div></div>
+            <div><button data-jid="${c.waId||c.id}" class="btn btn-sm btn-outline-primary btn-send">Kirim</button></div>
+          </div>`).join('');
+          document.querySelectorAll('.btn-send').forEach(b => b.addEventListener('click', (ev)=>{
+            const jid = ev.target.dataset.jid;
+            document.querySelector('#adminSidebar a[data-page="send"]').click();
+            setTimeout(()=> { document.querySelector('#formSendText input[name=jid]').value = jid; }, 300);
+          }));
+        } catch(e){ document.getElementById('contactsList').innerHTML = `<div class="text-danger">Error ambil kontak</div>`; }
       }
 
-      else if (name === 'chats') {
-        container.innerHTML = `<div class="card p-3"><h5>Chats</h5><div id="chatsList" class="mt-2 text-muted">Memuat...</div></div>`;
-        showLoading();
-        const r = await apiFetch('/api/wa/contacts'); // fallback: we used /api/contacts; if chats endpoint exists use it
-        hideLoading();
-        // if r.ok -> show otherwise show message
-        if (!r.ok) document.getElementById('chatsList').innerHTML = `<div class="text-muted">Tidak ada data chat (backend mungkin belum expose chats).</div>`;
-        else document.getElementById('chatsList').innerHTML = JSON.stringify(r);
-      }
-
-      else if (name === 'users') {
-        container.innerHTML = `<div class="card p-3"><h5>Manage Users</h5>
-          <div class="mb-3"><button id="btn-add-user" class="btn btn-success btn-sm">Buat User</button></div>
-          <div id="usersList"></div></div>`;
+      else if (page === 'users') {
+        area.innerHTML = `<div class="card p-3"><h5>Users</h5><div class="mb-2"><button id="btnAddUser" class="btn btn-success btn-sm">Buat User</button></div><div id="usersList">Memuat...</div></div>`;
         await loadUsers();
-        document.getElementById('btn-add-user').addEventListener('click', ()=> openUserModal());
+        document.getElementById('btnAddUser').addEventListener('click', ()=> openUserModal(null));
       }
 
-      else if (name === 'logs') {
-        container.innerHTML = `<div class="card p-3"><h5>Logs</h5><div id="logs" style="max-height:400px;overflow:auto;font-family:monospace;"></div></div>`;
+      else if (page === 'logs') {
+        area.innerHTML = `<div class="card p-3"><div class="d-flex justify-content-between align-items-center mb-2">
+          <h5>Logs</h5>
+          <div><input id="logsQuery" class="form-control form-control-sm" placeholder="Cari teks..." style="width:220px; display:inline-block;"/></div>
+        </div><div id="logsArea" style="max-height:400px;overflow:auto;font-family:monospace;"></div></div>`;
+        const loadLogs = async (q='') => {
+          const url = '/api/logs' + (q ? '?q=' + encodeURIComponent(q) : '');
+          const r = await apiFetch(url);
+          if (!r.ok) return document.getElementById('logsArea').innerHTML = '<div class="text-danger">Gagal ambil logs</div>';
+          document.getElementById('logsArea').innerHTML = r.logs.map(L => `<div class="border-bottom py-1"><small class="text-muted">${new Date(L.createdAt).toLocaleString()}</small><div>${L.type} — ${L.message}</div></div>`).join('');
+        };
+        await loadLogs();
+        document.getElementById('logsQuery').addEventListener('input', (ev) => {
+          const q = ev.target.value;
+          if (window._logsTimer) clearTimeout(window._logsTimer);
+          window._logsTimer = setTimeout(()=> loadLogs(q), 400);
+        });
       }
 
     } catch (e) {
-      container.innerHTML = `<div class="alert alert-danger">Error load page</div>`;
+      area.innerHTML = `<div class="alert alert-danger">Gagal memuat halaman</div>`;
     } finally { hideLoading(); }
   }
 
-  // load users
+  // user functions
   async function loadUsers() {
-    showLoading();
-    const r = await apiFetch('/api/users');
-    hideLoading();
-    if (!r.ok) { toastr.error('Gagal ambil users'); return; }
     const el = document.getElementById('usersList');
-    el.innerHTML = '';
-    r.users.forEach(u => {
-      const div = document.createElement('div');
-      div.className = 'border p-2 mb-2 d-flex justify-content-between align-items-center';
-      div.innerHTML = `<div><b>${u.username}</b> <div class="small text-muted">${u.email}</div><div class="small">role: ${u.role} • premium: ${u.premium}</div></div>
-        <div>
-          <button data-id="${u.id}" class="btn btn-sm btn-outline-primary btn-edit">Edit</button>
-          <button data-id="${u.id}" class="btn btn-sm btn-danger btn-del">Del</button>
-        </div>`;
-      el.appendChild(div);
-    });
-    el.querySelectorAll('.btn-del').forEach(btn => btn.addEventListener('click', async (ev)=>{
-      if (!confirm('Hapus user?')) return;
-      const id = ev.target.dataset.id;
-      showLoading();
-      const res = await apiFetch('/api/users/' + id, { method:'DELETE' });
-      hideLoading();
-      if (res.ok) { toastr.success('Dihapus'); loadUsers(); } else toastr.error('Gagal');
-    }));
-    el.querySelectorAll('.btn-edit').forEach(btn => btn.addEventListener('click', async (ev)=>{
-      const id = ev.target.dataset.id;
-      const r = await apiFetch('/api/users/' + id);
-      if (!r.ok) return toastr.error('Gagal ambil user');
-      openUserModal(r.user);
-    }));
+    el.innerHTML = 'Memuat...';
+    try {
+      const r = await apiFetch('/api/users');
+      if (!r.ok) return el.innerHTML = `<div class="text-danger">Gagal: ${r.error||r.message}</div>`;
+      el.innerHTML = r.users.map(u => `
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+          <div>
+            <b>${u.username}</b>
+            <div class="small text-muted">${u.email}</div>
+            <div class="small">role:${u.role} • premium:${u.premium}</div>
+          </div>
+          <div>
+            <button data-id="${u.id}" class="btn btn-sm btn-outline-primary btn-edit">Edit</button>
+            <button data-id="${u.id}" class="btn btn-sm btn-danger btn-del">Del</button>
+          </div>
+        </div>
+      `).join('');
+      document.querySelectorAll('.btn-del').forEach(b => b.addEventListener('click', async (ev)=> {
+        if (!confirm('Hapus user?')) return;
+        const id = ev.target.dataset.id;
+        const res = await apiFetch('/api/users/' + id, { method: 'DELETE' });
+        if (res.ok) { toastr.success('Dihapus'); loadUsers(); } else toastr.error('Gagal');
+      }));
+      document.querySelectorAll('.btn-edit').forEach(b => b.addEventListener('click', async (ev)=> {
+        const id = ev.target.dataset.id;
+        const r = await apiFetch('/api/users/' + id);
+        if (!r.ok) return toastr.error('Gagal ambil user');
+        openUserModal(r.user);
+      }));
+    } catch(e) { el.innerHTML = `<div class="text-danger">Error</div>`; }
   }
 
-  // simple user modal using prompt (quick)
   function openUserModal(user = null) {
-    const isNew = !user;
-    const username = prompt('Username', user?.username || '');
-    if (!username) return;
-    const email = prompt('Email', user?.email || '');
-    if (!email) return;
-    const role = prompt('Role (admin/member)', user?.role || 'member');
-    const premium = confirm('Set premium? (OK = yes)');
-    const pw = isNew ? prompt('Password (set for new user)', '') : (confirm('Ganti password?') ? prompt('Password baru') : null);
-    (async ()=>{
-      showLoading();
-      const payload = { username, email, role, premium };
-      if (pw) payload.password = pw;
-      try {
-        let res;
-        if (isNew) res = await apiFetch('/api/auth/register', { method:'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        else res = await apiFetch('/api/users/' + user.id, { method:'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        if (res.ok) { toastr.success('Sukses'); loadUsers(); } else toastr.error(res.error || res.message || 'Gagal');
-      } catch (e) { toastr.error('Error'); }
-      hideLoading();
-    })();
+    if (!user) {
+      document.querySelector('#userModalLabel').innerText = 'Buat User Baru';
+      document.querySelector('#userModalForm [name=id]').value = '';
+      document.querySelector('#userModalForm [name=username]').value = '';
+      document.querySelector('#userModalForm [name=email]').value = '';
+      document.querySelector('#userModalForm [name=password]').value = '';
+      document.querySelector('#userModalForm [name=role]').value = 'member';
+      document.querySelector('#userModalForm [name=premium]').checked = false;
+    } else {
+      document.querySelector('#userModalLabel').innerText = 'Edit User';
+      document.querySelector('#userModalForm [name=id]').value = user.id;
+      document.querySelector('#userModalForm [name=username]').value = user.username;
+      document.querySelector('#userModalForm [name=email]').value = user.email;
+      document.querySelector('#userModalForm [name=password]').value = '';
+      document.querySelector('#userModalForm [name=role]').value = user.role;
+      document.querySelector('#userModalForm [name=premium]').checked = !!user.premium;
+    }
+    if (userModal) userModal.show();
   }
+
+  document.getElementById('userModalForm')?.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const id = this.id.value;
+    const payload = {
+      username: this.username.value.trim(),
+      email: this.email.value.trim(),
+      role: this.role.value,
+      premium: this.premium.checked
+    };
+    if (this.password.value) payload.password = this.password.value;
+    showLoading();
+    try {
+      let res;
+      if (!id) {
+        res = await apiFetch('/api/auth/register', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await apiFetch('/api/users/' + id, {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+      }
+      if (res.ok) {
+        toastr.success('Sukses');
+        loadUsers();
+        if (userModal) userModal.hide();
+      } else {
+        toastr.error(res.error || res.message || 'Gagal');
+      }
+    } catch (e) { toastr.error('Error'); }
+    hideLoading();
+  });
 
 })();
