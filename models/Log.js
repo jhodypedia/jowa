@@ -1,21 +1,13 @@
-export default (sequelize, DataTypes) => {
-  const Log = sequelize.define("Log", {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true
-    },
-    message: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    level: {
-      type: DataTypes.STRING,
-      allowNull: false
-    }
-  }, {
-    tableName: "logs"
-  });
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
-  return Log;
-};
+const Log = sequelize.define("Log", {
+  action: { type: DataTypes.STRING, allowNull: false },
+  description: { type: DataTypes.TEXT },
+  userId: { type: DataTypes.INTEGER, allowNull: true }
+}, {
+  tableName: "logs",
+  timestamps: true
+});
+
+export default Log;
