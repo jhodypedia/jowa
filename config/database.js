@@ -1,19 +1,40 @@
 // config/database.js
 import { Sequelize } from "sequelize";
-import dotenv from "dotenv";
-dotenv.config();
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASS,
+  process.env.DB_NAME || "mydb", // Nama database
+  process.env.DB_USER || "root", // Username database
+  process.env.DB_PASS || "",     // Password database
   {
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT),
-    dialect: "mysql",
-    logging: false,
-    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+    host: process.env.DB_HOST || "127.0.0.1", // Host database
+    dialect: process.env.DB_DIALECT || "mysql", // mysql, postgres, sqlite, dll
+    logging: false, // matikan log query SQL di console
+    timezone: "+07:00" // contoh: WIB
   }
 );
 
 export default sequelize;
+
+// Auto connect & sync models
+export const connectDB = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log("✅ Database connected.");
+
+    // Import semua model agar terdaftar di Sequelize
+    await import("../models/User.js");
+    await import("../models/Message.js");
+    await import("../models/Contact.js");
+    await import("../models/Log.js");
+
+    // Buat relasi antar model
+    await import("../models/associations.js");
+
+    // Sinkronisasi model → tabel di DB
+    await sequelize.sync({ alter: true }); 
+    console.log("✅ Database synchronized.");
+  } catch (err) {
+    console.error("❌ Database connection failed:", err);
+    process.exit(1);
+  }
+};
