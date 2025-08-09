@@ -2,96 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title><%= title %></title>
-
-  <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Font Awesome -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
-
-  <!-- Toastr CSS -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet">
-
-  <!-- Custom CSS -->
-  <style>
-    body {
-      background: linear-gradient(135deg, #4e73df, #1cc88a);
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Segoe UI', sans-serif;
-    }
-    .login-card {
-      background: #fff;
-      padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      width: 100%;
-      max-width: 380px;
-    }
-    .login-card h2 {
-      font-weight: bold;
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-    .input-group-text {
-      background-color: #f8f9fc;
-    }
-    .btn-login {
-      background-color: #4e73df;
-      border: none;
-    }
-    .btn-login:hover {
-      background-color: #2e59d9;
-    }
-  </style>
+  <title>Login | JoWA</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+  <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
-
-  <div class="login-card">
-    <h2><i class="fas fa-sign-in-alt me-2"></i>Login</h2>
-    <form id="loginForm">
-      <div class="mb-3">
-        <label class="form-label">Username or Email</label>
-        <div class="input-group">
-          <span class="input-group-text"><i class="fas fa-user"></i></span>
-          <input type="text" id="username" class="form-control" placeholder="Enter username or email" required>
+<body class="bg-light">
+  <div class="container d-flex justify-content-center align-items-center vh-100">
+    <div class="card p-4 shadow" style="min-width: 350px;">
+      <h3 class="text-center mb-3">Login</h3>
+      <form id="loginForm">
+        <div class="mb-3">
+          <label class="form-label">Username or Email</label>
+          <input type="text" id="username" class="form-control" required>
         </div>
-      </div>
-
-      <div class="mb-3">
-        <label class="form-label">Password</label>
-        <div class="input-group">
-          <span class="input-group-text"><i class="fas fa-lock"></i></span>
-          <input type="password" id="password" class="form-control" placeholder="Enter password" required>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input type="password" id="password" class="form-control" required>
         </div>
-      </div>
-
-      <button type="submit" class="btn btn-login w-100 text-white">
-        <i class="fas fa-sign-in-alt me-1"></i> Login
-      </button>
-    </form>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="fas fa-sign-in-alt"></i> Login
+        </button>
+      </form>
+    </div>
   </div>
 
-  <!-- Bootstrap JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-  <!-- Toastr JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const form = document.getElementById("loginForm");
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
-
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value.trim();
 
-        toastr.info("Processing login...", "Please wait");
+        toastr.info("Processing login...");
 
         try {
           const res = await fetch("/api/auth/login", {
@@ -103,17 +52,18 @@
           const data = await res.json();
 
           if (!res.ok) {
-            toastr.error(data.message || "Login failed", "Error");
+            toastr.error(data.message || "Login failed");
             return;
           }
 
-          toastr.success("Login successful!", "Success");
-
+          localStorage.setItem("token", data.token); // Simpan token
+          toastr.success("Login successful!");
           setTimeout(() => {
-            window.location.href = "/wa"; // redirect ke admin panel
+            window.location.href = "/wa";
           }, 1000);
+
         } catch (err) {
-          toastr.error("Error connecting to server", "Error");
+          toastr.error("Error connecting to server");
         }
       });
     });
