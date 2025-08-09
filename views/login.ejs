@@ -7,7 +7,7 @@
         <div class="card-body p-4">
           <h4 class="mb-3 text-center">Masuk — WA Panel</h4>
 
-          <form id="formLogin" method="POST" action="/api/auth/login" autocomplete="off">
+          <form id="formLogin" autocomplete="off">
             <div class="mb-3">
               <label class="form-label">Username</label>
               <input name="username" class="form-control" required autofocus>
@@ -17,7 +17,7 @@
               <input name="password" type="password" class="form-control" required>
             </div>
             <div class="d-grid">
-              <button class="btn btn-primary">Masuk</button>
+              <button id="btnLogin" class="btn btn-primary" type="submit">Masuk</button>
             </div>
           </form>
 
@@ -34,20 +34,49 @@
     e.preventDefault();
     const username = this.username.value.trim();
     const password = this.password.value;
+
+    // Tombol loading state
+    const btn = $("#btnLogin").prop("disabled", true).text("Memproses...");
+
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ username, password })
       });
+
+      // Jika API tidak mengembalikan JSON valid
+      if (!res.ok) {
+        toastr.error("Gagal login, server mengembalikan error");
+        btn.prop("disabled", false).text("Masuk");
+        return;
+      }
+
       const j = await res.json();
-      if (!j.ok) { toastr.error(j.message || j.error || "Login gagal"); return; }
+
+      if (!j.ok) {
+        toastr.error(j.message || j.error || "Login gagal");
+        btn.prop("disabled", false).text("Masuk");
+        return;
+      }
+
+      // Simpan token
       localStorage.setItem("token", j.token);
-      toastr.success("Login berhasil");
-      if (j.user.role === "admin") window.location.href = "/wa";
-      else window.location.href = "/wa-lite";
+      toastr.success("Login berhasil, mengalihkan halaman...");
+
+      // Redirect sesuai role
+      setTimeout(() => {
+        if (j.user.role === "admin") {
+          window.location.href = "/wa";
+        } else {
+          window.location.href = "/wa-lite";
+        }
+      }, 800);
+
     } catch (err) {
-      toastr.error("Gagal koneksi");
+      toastr.error("Gagal koneksi ke server");
+      console.error(err);
+      btn.prop("disabled", false).text("Masuk");
     }
   });
 </script>
