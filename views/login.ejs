@@ -1,53 +1,64 @@
-<%- include('partials/header') %>
-
-<div class="container" style="max-width:980px; margin-top:40px;">
-  <div class="row justify-content-center">
-    <div class="col-11 col-sm-8 col-md-5">
-      <div class="card shadow-sm">
-        <div class="card-body p-4">
-          <h4 class="mb-3 text-center">Masuk — WA Panel</h4>
-
-          <form id="formLogin">
-            <div class="mb-3">
-              <label class="form-label">Username</label>
-              <input name="username" class="form-control" required autofocus>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Password</label>
-              <input name="password" type="password" class="form-control" required>
-            </div>
-            <div class="d-grid">
-              <button class="btn btn-primary">Masuk</button>
-            </div>
-          </form>
-
-          <hr>
-          <small class="text-muted">Hubungi admin jika belum punya akun.</small>
-        </div>
-      </div>
-    </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="login-container">
+    <h2>Login</h2>
+    <form id="loginForm">
+      <label>Username or Email</label>
+      <input type="text" id="username" required>
+      <label>Password</label>
+      <input type="password" id="password" required>
+      <button type="submit">Login</button>
+    </form>
+    <div id="loginMessage"></div>
   </div>
-</div>
 
-<script>
-$("#formLogin").on("submit", async function(e){
-  e.preventDefault();
-  const username = this.username.value.trim();
-  const password = this.password.value;
-  try {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ username, password })
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("loginForm");
+      const messageBox = document.getElementById("loginMessage");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value.trim();
+
+        messageBox.textContent = "Processing...";
+
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            messageBox.textContent = data.message || "Login failed";
+            messageBox.style.color = "red";
+            return;
+          }
+
+          messageBox.textContent = "Login successful!";
+          messageBox.style.color = "green";
+
+          // Redirect after login
+          setTimeout(() => {
+            window.location.href = "/wa"; // halaman admin panel
+          }, 800);
+        } catch (err) {
+          messageBox.textContent = "Error connecting to server";
+          messageBox.style.color = "red";
+        }
+      });
     });
-    const j = await res.json();
-    if (!j.ok) { toastr.error(j.message || j.error || "Login gagal"); return; }
-    localStorage.setItem("token", j.token);
-    toastr.success("Login berhasil");
-    if (j.user.role === "admin") window.location.href = "/wa";
-    else window.location.href = "/wa-lite";
-  } catch (err) {
-    toastr.error("Gagal koneksi");
-  }
-});
-</script>
+  </script>
+</body>
+</html>
