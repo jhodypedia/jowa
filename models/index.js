@@ -5,5 +5,5 @@ import Message from "./Message.js";
 import Contact from "./Contact.js";
 import Log from "./Log.js";
 
-const db = { sequelize, User, Message, Contact, Log };
+const db = { sequelize, Sequelize: sequelize.Sequelize || require('sequelize'), User, Message, Contact, Log };
 export default db;
