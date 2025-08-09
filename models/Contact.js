@@ -1,21 +1,12 @@
-export default (sequelize, DataTypes) => {
-  const Contact = sequelize.define("Contact", {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    phone: {
-      type: DataTypes.STRING,
-      allowNull: false
-    }
-  }, {
-    tableName: "contacts"
-  });
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
-  return Contact;
-};
+const Contact = sequelize.define("Contact", {
+  name: { type: DataTypes.STRING, allowNull: false },
+  phone: { type: DataTypes.STRING, allowNull: false, unique: true }
+}, {
+  tableName: "contacts",
+  timestamps: true
+});
+
+export default Contact;
