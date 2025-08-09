@@ -1,16 +1,13 @@
-// models/Message.js
-import { DataTypes } from "sequelize";
-import sequelize from "../config/database.js";
+// models/message.js
+export default (sequelize, DataTypes) => {
+  const Message = sequelize.define('Message', {
+    chatId: { type: DataTypes.STRING, allowNull: false },
+    sender: { type: DataTypes.STRING, allowNull: false },
+    content: { type: DataTypes.TEXT, allowNull: false },
+    type: { type: DataTypes.STRING, defaultValue: 'text' }
+  }, {
+    tableName: 'messages'
+  });
 
-const Message = sequelize.define("Message", {
-  waId: { type: DataTypes.STRING, allowNull: true },
-  sender: { type: DataTypes.STRING, allowNull: true },
-  content: { type: DataTypes.TEXT, allowNull: true },
-  raw: { type: DataTypes.JSON, allowNull: true },
-  timestamp: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
-}, {
-  tableName: "messages",
-  timestamps: false
-});
-
-export default Message;
+  return Message;
+};
