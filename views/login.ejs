@@ -1,0 +1,50 @@
+<% layout('layout', { title: 'Login' }) %>
+
+<div class="row justify-content-center">
+  <div class="col-11 col-sm-8 col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h4 class="mb-3 text-center">Masuk — WA Panel</h4>
+
+        <form id="formLogin">
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input name="username" class="form-control" required autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input name="password" type="password" class="form-control" required>
+          </div>
+          <div class="d-grid">
+            <button class="btn btn-primary">Masuk</button>
+          </div>
+        </form>
+        <hr />
+        <small class="text-muted">Admin dapat membuat user. Untuk test, jalankan seed admin.</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% script(function(){ %>
+<script>
+  $("#formLogin").on("submit", async function(e){
+    e.preventDefault();
+    const u = this.username.value.trim(), p = this.password.value;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ username: u, password: p })
+      });
+      const j = await res.json();
+      if (!j.ok) { toastr.error(j.message || j.error || "Login gagal"); return; }
+      localStorage.setItem("token", j.token);
+      toastr.success("Login berhasil");
+      const role = j.user?.role || "member";
+      if (role === "admin") window.location.href = "/wa";
+      else window.location.href = "/wa-lite";
+    } catch (err) { toastr.error("Network error"); }
+  });
+</script>
+<% }) %>
