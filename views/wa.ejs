@@ -75,4 +75,104 @@
   </div>
 </div>
 
-<script src="/js/admin.js"></script>
+<script>
+// Pastikan socket.io sudah dimuat di layout utama
+document.addEventListener('DOMContentLoaded', () => {
+    const socket = io();
+    const qrImage = document.getElementById('qrImage');
+    const waState = document.getElementById('waState');
+
+    let qrRefreshInterval = null;
+
+    // Fungsi untuk load QR manual / auto
+    function loadQR() {
+        fetch('/wa/qr', { 
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok && data.qr) {
+                const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(data.qr);
+                qrImage.src = qrUrl;
+                qrImage.style.display = 'block';
+                waState.textContent = 'Connection: QR Code available';
+            } else {
+                qrImage.style.display = 'none';
+                waState.textContent = 'Connection: No QR available';
+            }
+        })
+        .catch(() => {
+            waState.textContent = 'Connection: Failed to fetch QR';
+        });
+    }
+
+    // Event QR dari server (realtime)
+    socket.on('qr', qr => {
+        const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(qr);
+        qrImage.src = qrUrl;
+        qrImage.style.display = 'block';
+        waState.textContent = 'Connection: QR Code available (socket)';
+    });
+
+    // Event status koneksi WA
+    socket.on('wa-status', status => {
+        waState.textContent = 'Connection: ' + status;
+        if (status === 'connected') {
+            qrImage.style.display = 'none';
+            if (qrRefreshInterval) {
+                clearInterval(qrRefreshInterval);
+                qrRefreshInterval = null;
+            }
+        } else if (status === 'disconnected' || status === 'qr') {
+            if (!qrRefreshInterval) {
+                loadQR(); // Ambil QR langsung
+                qrRefreshInterval = setInterval(loadQR, 20000); // Refresh tiap 20 detik
+            }
+        }
+    });
+
+    // Tombol refresh QR manual
+    document.getElementById('btn-refresh-qr').addEventListener('click', () => {
+        loadQR();
+    });
+
+    // Tombol force logout WA
+    document.getElementById('btn-logout-wa').addEventListener('click', () => {
+        fetch('/wa/logout', { 
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok) {
+                alert('WhatsApp berhasil logout.');
+                loadQR();
+            } else {
+                alert('Gagal logout WhatsApp.');
+            }
+        })
+        .catch(() => alert('Error saat logout.'));
+    });
+
+    // Logout admin panel
+    document.getElementById('btn-logout-top').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        window.location.href = '/';
+    });
+
+    // Cek status WA awal saat halaman dibuka
+    fetch('/wa/status', { 
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.ok) {
+            waState.textContent = 'Connection: ' + data.status;
+            if (data.status !== 'connected') {
+                loadQR();
+                qrRefreshInterval = setInterval(loadQR, 20000);
+            }
+        }
+    });
+}); 
+</script>
