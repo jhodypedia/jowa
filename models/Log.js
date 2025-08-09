@@ -1,7 +1,21 @@
-// models/log.js
-export default function(sequelize, DataTypes) {
-  return sequelize.define("Log", {
-    type: DataTypes.STRING,
-    message: DataTypes.TEXT
+export default (sequelize, DataTypes) => {
+  const Log = sequelize.define("Log", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true
+    },
+    message: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    level: {
+      type: DataTypes.STRING,
+      allowNull: false
+    }
+  }, {
+    tableName: "logs"
   });
-}
+
+  return Log;
+};
