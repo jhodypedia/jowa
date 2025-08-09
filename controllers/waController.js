@@ -19,15 +19,24 @@ export default class WAWrapper {
     this.authPath = process.env.AUTH_FOLDER || "./auth";
   }
 
-  getLastQr() { return this.qr; }
+  getLastQr() {
+    return this.qr;
+  }
 
   async init() {
     try {
-      if (!fs.existsSync(this.authPath)) fs.mkdirSync(this.authPath, { recursive: true });
+      if (!fs.existsSync(this.authPath)) {
+        fs.mkdirSync(this.authPath, { recursive: true });
+      }
 
       const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
       let version;
-      try { const v = await fetchLatestBaileysVersion(); version = v.version; } catch(e){ version = undefined; }
+      try {
+        const v = await fetchLatestBaileysVersion();
+        version = v.version;
+      } catch (e) {
+        version = undefined;
+      }
 
       this.sock = makeWASocket({
         version,
@@ -36,17 +45,15 @@ export default class WAWrapper {
         syncFullHistory: true
       });
 
-      // persist creds
       this.sock.ev.on("creds.update", saveCreds);
 
-      // connection.update
       this.sock.ev.on("connection.update", async (update) => {
         const { qr, connection, lastDisconnect } = update;
 
         if (qr) {
           try {
             const dataUrl = await qrcode.toDataURL(qr);
-            this.qr = dataUrl; // data:image/png;base64,...
+            this.qr = dataUrl;
             this.io.emit("qr", dataUrl);
             this.io.emit("wa_state", "disconnected");
           } catch (e) {
@@ -66,14 +73,15 @@ export default class WAWrapper {
           const code = last?.output?.statusCode;
           this.io.emit("wa_state", "disconnected");
           console.warn("[WA] connection closed", last?.message || last);
-          // if not loggedOut -> reconnect
           const shouldReconnect = code !== DisconnectReason.loggedOut;
           if (shouldReconnect) {
             console.log("[WA] reconnecting in 3s");
-            setTimeout(()=> this.init().catch(()=>{}), 3000);
+            setTimeout(() => this.init().catch(() => {}), 3000);
           } else {
             console.log("[WA] logged out, remove auth");
-            try { fs.rmSync(this.authPath, { recursive:true, force:true }); } catch(e){}
+            try {
+              fs.rmSync(this.authPath, { recursive: true, force: true });
+            } catch (e) {}
           }
         }
       });
@@ -83,23 +91,35 @@ export default class WAWrapper {
         try {
           this.io.emit("messages.upsert", m);
           const msgs = m.messages || [];
+
           for (const msg of msgs) {
             const sender = msg.key.remoteJid || msg.participant || "unknown";
-            // save basic
+            const receiver = this.sock?.user?.id || "server";
+            const text =
+              msg.message?.conversation ||
+              msg.message?.extendedTextMessage?.text ||
+              "";
+
+            // save to DB
             if (this.db?.Message) {
               await this.db.Message.create({
                 waId: msg.key?.id || null,
                 from: sender,
+                to: receiver,
+                content: text,
+                status: "received",
                 message: JSON.stringify(msg.message || {}),
-                raw: msg,
+                raw: JSON.stringify(msg || {}),
                 timestamp: new Date()
               });
             }
-            // emit simplified incoming-message
-            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+
+            // emit simplified message
             this.io.emit("incoming-message", { from: sender, text });
           }
-        } catch (e) { console.error("save incoming err", e); }
+        } catch (e) {
+          console.error("save incoming err", e);
+        }
       });
 
       // contacts
@@ -107,16 +127,21 @@ export default class WAWrapper {
         try {
           for (const ct of c) {
             if (!ct?.id) continue;
-            if (this.db?.Contact) await this.db.Contact.upsert({ waId: ct.id, name: ct.notify || ct.name || null, raw: ct });
+            if (this.db?.Contact)
+              await this.db.Contact.upsert({
+                waId: ct.id,
+                name: ct.notify || ct.name || null,
+                raw: JSON.stringify(ct)
+              });
           }
           this.io.emit("contacts.upsert", c);
-        } catch(e){}
+        } catch (e) {}
       });
 
       return this.sock;
     } catch (e) {
       console.error("WA init error", e);
-      setTimeout(()=> this.init().catch(()=>{}), 5000);
+      setTimeout(() => this.init().catch(() => {}), 5000);
       throw e;
     }
   }
@@ -135,10 +160,26 @@ export default class WAWrapper {
     if (!this.sock) throw new Error("WA not connected");
     const id = jid.includes("@") ? jid : `${jid}@s.whatsapp.net`;
     const mt = (mimetype || "").toLowerCase();
-    if (mt.startsWith("image/")) return this.sock.sendMessage(id, { image: buffer, caption, mimetype: mt });
-    if (mt.startsWith("video/")) return this.sock.sendMessage(id, { video: buffer, caption, mimetype: mt });
-    if (mt.startsWith("audio/")) return this.sock.sendMessage(id, { audio: buffer, mimetype: mt });
-    return this.sock.sendMessage(id, { document: buffer, fileName: filename || "file", mimetype: mt, caption });
+    if (mt.startsWith("image/"))
+      return this.sock.sendMessage(id, {
+        image: buffer,
+        caption,
+        mimetype: mt
+      });
+    if (mt.startsWith("video/"))
+      return this.sock.sendMessage(id, {
+        video: buffer,
+        caption,
+        mimetype: mt
+      });
+    if (mt.startsWith("audio/"))
+      return this.sock.sendMessage(id, { audio: buffer, mimetype: mt });
+    return this.sock.sendMessage(id, {
+      document: buffer,
+      fileName: filename || "file",
+      mimetype: mt,
+      caption
+    });
   }
 
   async downloadMedia(message) {
@@ -150,10 +191,12 @@ export default class WAWrapper {
       message.message?.audioMessage ||
       message.message?.stickerMessage;
     if (!media) throw new Error("No media");
+
     let mediaType = "document";
     if (message.message?.imageMessage) mediaType = "image";
     else if (message.message?.videoMessage) mediaType = "video";
     else if (message.message?.audioMessage) mediaType = "audio";
+
     const stream = await downloadContentFromMessage(media, mediaType);
     const bufs = [];
     for await (const chunk of stream) bufs.push(Buffer.from(chunk));
@@ -191,12 +234,13 @@ export default class WAWrapper {
   async logout() {
     try {
       if (this.sock?.logout) await this.sock.logout();
-    } catch(e){}
-    try { fs.rmSync(this.authPath, { recursive: true, force: true }); } catch(e){}
+    } catch (e) {}
+    try {
+      fs.rmSync(this.authPath, { recursive: true, force: true });
+    } catch (e) {}
     this.qr = null;
     this.io.emit("wa_state", "disconnected");
-    // restart init
-    setTimeout(()=> this.init().catch(()=>{}), 1000);
+    setTimeout(() => this.init().catch(() => {}), 1000);
     return true;
   }
 }
