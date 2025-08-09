@@ -75,10 +75,11 @@
   </div>
 </div>
 
+<!-- Script QRCode -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
 <% scripts = `
 <script>
-// public/js/admin.js
-
 document.addEventListener('DOMContentLoaded', () => {
     const navUserName = document.getElementById('nav-user-name');
     const navUserRole = document.getElementById('nav-user-role');
@@ -119,17 +120,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('qr', qr => {
-        // Bersihkan QR lama
         qrBox.innerHTML = '';
-        const qrDiv = document.createElement('div');
-        qrBox.appendChild(qrDiv);
 
-        // Generate QR di browser
-        new QRCode(qrDiv, {
-            text: qr,
-            width: 300,
-            height: 300
-        });
+        if (qr.startsWith('data:image')) {
+            const img = document.createElement('img');
+            img.src = qr;
+            img.style.maxWidth = '300px';
+            qrBox.appendChild(img);
+        } else {
+            const qrDiv = document.createElement('div');
+            qrBox.appendChild(qrDiv);
+            new QRCode(qrDiv, {
+                text: qr,
+                width: 300,
+                height: 300
+            });
+        }
 
         waState.textContent = 'Connection: QR Code available';
     });
@@ -142,14 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(res => res.json())
         .then(data => {
             if (data.ok && data.qr) {
-                qrBox.innerHTML = '';
-                const qrDiv = document.createElement('div');
-                qrBox.appendChild(qrDiv);
-                new QRCode(qrDiv, {
-                    text: data.qr,
-                    width: 300,
-                    height: 300
-                });
+                socket.emit('manual-qr', data.qr);
             } else {
                 alert('QR tidak tersedia');
             }
@@ -172,6 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.ok) {
                 alert('Berhasil logout WA');
                 waState.textContent = 'Connection: Logged out';
+                qrBox.innerHTML = '';
             } else {
                 alert('Gagal logout WA');
             }
@@ -185,5 +185,5 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = '/login';
     });
 });
-</script> 
+</script>
 ` %>
