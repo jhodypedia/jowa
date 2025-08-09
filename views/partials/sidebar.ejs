@@ -1,18 +1,14 @@
-<aside id="adminSidebar" class="sidebar bg-white border-end">
-  <div class="sidebar-inner p-3">
-    <div class="mb-3">
-      <h5 class="mb-0">Admin</h5>
-      <small class="text-muted">Panel</small>
-    </div>
-    <div class="list-group">
-      <a href="#" class="list-group-item list-group-item-action active" data-page="dashboard"><i class="bi bi-speedometer2 me-2"></i> Dashboard</a>
-      <a href="#" class="list-group-item list-group-item-action" data-page="send"><i class="bi bi-send me-2"></i> Kirim</a>
-      <a href="#" class="list-group-item list-group-item-action" data-page="send-media"><i class="bi bi-image me-2"></i> Kirim Media</a>
-      <a href="#" class="list-group-item list-group-item-action" data-page="contacts"><i class="bi bi-people me-2"></i> Kontak</a>
-      <a href="#" class="list-group-item list-group-item-action" data-page="chats"><i class="bi bi-chat-left-text me-2"></i> Chats</a>
-      <a href="#" class="list-group-item list-group-item-action" data-page="users"><i class="bi bi-person-gear me-2"></i> Users</a>
-      <a href="#" class="list-group-item list-group-item-action" data-page="logs"><i class="bi bi-journal-text me-2"></i> Logs</a>
-      <a href="#" class="list-group-item list-group-item-action text-danger" id="btn-logout-side"><i class="bi bi-box-arrow-right me-2"></i> Logout</a>
-    </div>
+<div id="adminSidebar" class="bg-white border-end p-3" style="width:240px; min-height: calc(100vh - 56px);">
+  <ul class="nav nav-pills flex-column">
+    <li class="nav-item"><a class="nav-link active" href="#" data-page="dashboard">Dashboard</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-page="send">Kirim</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-page="send-media">Kirim Media</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-page="contacts">Kontak</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-page="users">Users</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" data-page="logs">Logs</a></li>
+  </ul>
+
+  <div class="mt-4">
+    <button id="btn-logout-side" class="btn btn-outline-danger w-100 btn-sm">Logout</button>
   </div>
-</aside>
+</div>
