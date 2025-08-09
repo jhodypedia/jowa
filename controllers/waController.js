@@ -4,6 +4,7 @@ import {
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
+  downloadContentFromMessage,
   delay
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
@@ -15,147 +16,187 @@ export default class WAWrapper {
     this.db = db;
     this.sock = null;
     this.qr = null;
-    this.store = null;
+    this.authPath = process.env.AUTH_FOLDER || "./auth";
   }
 
-  getLastQr() {
-    return this.qr;
-  }
+  getLastQr() { return this.qr; }
 
   async init() {
-    const { state, saveCreds } = await useMultiFileAuthState("./auth");
-    const { version } = await fetchLatestBaileysVersion();
+    try {
+      if (!fs.existsSync(this.authPath)) fs.mkdirSync(this.authPath, { recursive: true });
 
-    this.sock = makeWASocket({
-      version,
-      auth: state,
-      printQRInTerminal: true,
-      syncFullHistory: true,
-    });
+      const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
+      let version;
+      try { const v = await fetchLatestBaileysVersion(); version = v.version; } catch(e){ version = undefined; }
 
-    // Event koneksi
-    this.sock.ev.on("connection.update", async (update) => {
-      const { qr, connection, lastDisconnect } = update;
+      this.sock = makeWASocket({
+        version,
+        auth: state,
+        printQRInTerminal: false,
+        syncFullHistory: true
+      });
 
-      if (qr) {
-        try {
-          const qrImage = await qrcode.toDataURL(qr);
-          this.qr = qrImage;
-          console.log("[WA] QR baru tersedia");
-          this.io.emit("qr", qrImage);
-        } catch (err) {
-          console.error("[WA] Gagal buat QR", err);
-        }
-      }
+      // persist creds
+      this.sock.ev.on("creds.update", saveCreds);
 
-      if (connection === "close") {
-        const shouldReconnect =
-          (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log("[WA] Koneksi putus:", lastDisconnect?.error?.message);
-        if (shouldReconnect) {
-          console.log("[WA] Reconnect...");
-          this.init();
-        }
-      }
+      // connection.update
+      this.sock.ev.on("connection.update", async (update) => {
+        const { qr, connection, lastDisconnect } = update;
 
-      if (connection === "open") {
-        console.log("[WA] Terhubung ke WhatsApp");
-        this.qr = null;
-        this.io.emit("qr", null);
-      }
-    });
-
-    // Event pesan masuk
-    this.sock.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (type === "notify") {
-        for (const msg of messages) {
-          const sender = msg.key.remoteJid;
-          const text = msg.message?.conversation ||
-                       msg.message?.extendedTextMessage?.text ||
-                       msg.message?.imageMessage?.caption || "";
-
-          console.log(`[WA] Pesan masuk dari ${sender}: ${text}`);
-
-          // Simpan ke DB jika model tersedia
-          if (this.db?.Message) {
-            await this.db.Message.create({
-              from: sender,
-              message: text,
-              timestamp: new Date()
-            });
+        if (qr) {
+          try {
+            const dataUrl = await qrcode.toDataURL(qr);
+            this.qr = dataUrl; // data:image/png;base64,...
+            this.io.emit("qr", dataUrl);
+            this.io.emit("wa_state", "disconnected");
+          } catch (e) {
+            console.error("QR gen fail", e);
           }
-
-          // Kirim notifikasi ke client admin
-          this.io.emit("incoming-message", { from: sender, message: text });
         }
-      }
-    });
 
-    // Simpan kredensial
-    this.sock.ev.on("creds.update", saveCreds);
+        if (connection === "open") {
+          console.log("[WA] connected");
+          this.qr = null;
+          this.io.emit("qr", null);
+          this.io.emit("wa_state", "connected");
+        }
+
+        if (connection === "close") {
+          const last = lastDisconnect?.error;
+          const code = last?.output?.statusCode;
+          this.io.emit("wa_state", "disconnected");
+          console.warn("[WA] connection closed", last?.message || last);
+          // if not loggedOut -> reconnect
+          const shouldReconnect = code !== DisconnectReason.loggedOut;
+          if (shouldReconnect) {
+            console.log("[WA] reconnecting in 3s");
+            setTimeout(()=> this.init().catch(()=>{}), 3000);
+          } else {
+            console.log("[WA] logged out, remove auth");
+            try { fs.rmSync(this.authPath, { recursive:true, force:true }); } catch(e){}
+          }
+        }
+      });
+
+      // incoming messages
+      this.sock.ev.on("messages.upsert", async (m) => {
+        try {
+          this.io.emit("messages.upsert", m);
+          const msgs = m.messages || [];
+          for (const msg of msgs) {
+            const sender = msg.key.remoteJid || msg.participant || "unknown";
+            // save basic
+            if (this.db?.Message) {
+              await this.db.Message.create({
+                waId: msg.key?.id || null,
+                from: sender,
+                message: JSON.stringify(msg.message || {}),
+                raw: msg,
+                timestamp: new Date()
+              });
+            }
+            // emit simplified incoming-message
+            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+            this.io.emit("incoming-message", { from: sender, text });
+          }
+        } catch (e) { console.error("save incoming err", e); }
+      });
+
+      // contacts
+      this.sock.ev.on("contacts.upsert", async (c) => {
+        try {
+          for (const ct of c) {
+            if (!ct?.id) continue;
+            if (this.db?.Contact) await this.db.Contact.upsert({ waId: ct.id, name: ct.notify || ct.name || null, raw: ct });
+          }
+          this.io.emit("contacts.upsert", c);
+        } catch(e){}
+      });
+
+      return this.sock;
+    } catch (e) {
+      console.error("WA init error", e);
+      setTimeout(()=> this.init().catch(()=>{}), 5000);
+      throw e;
+    }
   }
 
-  // Cek status koneksi
   async status() {
     return this.sock?.ws?.readyState === 1 ? "connected" : "disconnected";
   }
 
-  // Kirim pesan teks
   async sendText(jid, text) {
-    if (!this.sock) throw new Error("WA belum terhubung");
-    const id = jid.includes("@s.whatsapp.net") ? jid : jid + "@s.whatsapp.net";
-    return await this.sock.sendMessage(id, { text });
+    if (!this.sock) throw new Error("WA not connected");
+    const id = jid.includes("@") ? jid : `${jid}@s.whatsapp.net`;
+    return this.sock.sendMessage(id, { text });
   }
 
-  // Kirim pesan dengan media
-  async sendMedia(jid, filePath, caption = "") {
-    if (!this.sock) throw new Error("WA belum terhubung");
-    const buffer = fs.readFileSync(filePath);
-    const id = jid.includes("@s.whatsapp.net") ? jid : jid + "@s.whatsapp.net";
-    return await this.sock.sendMessage(id, { image: buffer, caption });
+  async sendMediaFromBuffer(jid, buffer, filename, mimetype, caption = "") {
+    if (!this.sock) throw new Error("WA not connected");
+    const id = jid.includes("@") ? jid : `${jid}@s.whatsapp.net`;
+    const mt = (mimetype || "").toLowerCase();
+    if (mt.startsWith("image/")) return this.sock.sendMessage(id, { image: buffer, caption, mimetype: mt });
+    if (mt.startsWith("video/")) return this.sock.sendMessage(id, { video: buffer, caption, mimetype: mt });
+    if (mt.startsWith("audio/")) return this.sock.sendMessage(id, { audio: buffer, mimetype: mt });
+    return this.sock.sendMessage(id, { document: buffer, fileName: filename || "file", mimetype: mt, caption });
   }
 
-  // Broadcast pesan teks
-  async broadcast(jids, text) {
-    if (!this.sock) throw new Error("WA belum terhubung");
+  async downloadMedia(message) {
+    if (!this.sock) throw new Error("WA not connected");
+    const media =
+      message.message?.imageMessage ||
+      message.message?.videoMessage ||
+      message.message?.documentMessage ||
+      message.message?.audioMessage ||
+      message.message?.stickerMessage;
+    if (!media) throw new Error("No media");
+    let mediaType = "document";
+    if (message.message?.imageMessage) mediaType = "image";
+    else if (message.message?.videoMessage) mediaType = "video";
+    else if (message.message?.audioMessage) mediaType = "audio";
+    const stream = await downloadContentFromMessage(media, mediaType);
+    const bufs = [];
+    for await (const chunk of stream) bufs.push(Buffer.from(chunk));
+    return Buffer.concat(bufs);
+  }
+
+  async getContacts() {
+    if (!this.sock) throw new Error("WA not connected");
+    const store = this.sock.store?.contacts || {};
+    return Object.values(store);
+  }
+
+  async getChats() {
+    if (!this.sock) throw new Error("WA not connected");
+    const store = this.sock.store?.chats || {};
+    return Object.values(store);
+  }
+
+  async broadcast(jids = [], text = "") {
+    if (!this.sock) throw new Error("WA not connected");
     const results = [];
-    for (const jid of jids) {
-      const id = jid.includes("@s.whatsapp.net") ? jid : jid + "@s.whatsapp.net";
-      const sent = await this.sock.sendMessage(id, { text });
-      results.push({ jid: id, status: "sent", id: sent.key.id });
-      await delay(1000); // delay biar aman
+    for (const j of jids) {
+      const id = j.includes("@") ? j : `${j}@s.whatsapp.net`;
+      try {
+        const r = await this.sock.sendMessage(id, { text });
+        results.push({ jid: id, ok: true, id: r.key.id });
+      } catch (e) {
+        results.push({ jid: id, ok: false, error: String(e) });
+      }
+      await delay(500);
     }
     return results;
   }
 
-  // Ambil semua kontak
-  async getContacts() {
-    if (!this.sock) throw new Error("WA belum terhubung");
-    return this.sock.contacts;
-  }
-
-  // Ambil semua grup
-  async getGroups() {
-    if (!this.sock) throw new Error("WA belum terhubung");
-    const groups = await this.sock.groupFetchAllParticipating();
-    return Object.values(groups);
-  }
-
-  // Tandai pesan sebagai dibaca
-  async markAsRead(jid, messageId) {
-    if (!this.sock) throw new Error("WA belum terhubung");
-    const id = jid.includes("@s.whatsapp.net") ? jid : jid + "@s.whatsapp.net";
-    return await this.sock.readMessages([{ remoteJid: id, id: messageId }]);
-  }
-
-  // Logout
   async logout() {
-    if (this.sock) {
-      await this.sock.logout();
-      this.qr = null;
-      console.log("[WA] Logout berhasil");
-      return true;
-    }
-    return false;
+    try {
+      if (this.sock?.logout) await this.sock.logout();
+    } catch(e){}
+    try { fs.rmSync(this.authPath, { recursive: true, force: true }); } catch(e){}
+    this.qr = null;
+    this.io.emit("wa_state", "disconnected");
+    // restart init
+    setTimeout(()=> this.init().catch(()=>{}), 1000);
+    return true;
   }
 }
