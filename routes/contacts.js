@@ -1,13 +1,14 @@
 // routes/contacts.js
 import express from "express";
-import { verifyToken, requirePremium } from "../middleware/auth.js";
-import { listContacts, createContact, updateContact, deleteContact } from "../controllers/contactsController.js";
-
+import { verifyToken } from "../middleware/auth.js";
 const router = express.Router();
 
-router.get("/", verifyToken, requirePremium, listContacts);
-router.post("/", verifyToken, requirePremium, createContact);
-router.put("/:id", verifyToken, requirePremium, updateContact);
-router.delete("/:id", verifyToken, requirePremium, deleteContact);
+router.get("/", verifyToken, async (req, res) => {
+  try {
+    const wa = req.app.locals.waWrapper;
+    const contacts = await wa.getContacts();
+    res.json({ ok:true, contacts });
+  } catch (e) { res.status(500).json({ ok:false, error: String(e) }); }
+});
 
 export default router;
