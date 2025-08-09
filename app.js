@@ -8,9 +8,7 @@ import dotenv from "dotenv";
 import morgan from "morgan";
 import expressLayouts from "express-ejs-layouts";
 
-import sequelize from "./config/database.js";
-import db from "./models/index.js";
-
+import db from "./models/index.js"; // loads models & sequelize
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import messagesRoutes from "./routes/messages.js";
@@ -41,7 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(express.static(path.join(process.cwd(), "public")));
 
-// mount routes (API)
+// mount routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/messages", messagesRoutes);
@@ -49,15 +47,15 @@ app.use("/api/contacts", contactsRoutes);
 app.use("/api/wa", waRoutes);
 app.use("/api/logs", logsRoutes);
 
-// pages
+// pages (EJS)
 app.get("/", (req, res) => res.render("login", { title: "Login" }));
 app.get("/wa", (req, res) => res.render("wa", { title: "Admin Panel" }));
 app.get("/wa-lite", (req, res) => res.render("wa-lite", { title: "Member Panel" }));
 
-// start
+// init DB + WA wrapper + socket
 (async () => {
   try {
-    await sequelize.authenticate();
+    await db.sequelize.authenticate();
     await db.sequelize.sync({ alter: true });
     console.log("DB connected & synced");
 
@@ -75,37 +73,42 @@ app.get("/wa-lite", (req, res) => res.render("wa-lite", { title: "Member Panel" 
       }
     } catch (e) { console.error("seed admin error", e); }
 
-    // WA wrapper
     const wa = new WAWrapper(io, db);
     app.locals.waWrapper = wa;
 
     // init WA (auto-reconnect inside)
-    wa.init().catch((e) => console.error("WA init error:", e));
+    await wa.init().catch((e) => console.error("WA init error:", e));
 
     // socket.io
     io.on("connection", (socket) => {
-  console.log("socket connected", socket.id);
+      console.log("socket connected", socket.id);
 
-  // Kirim QR terakhir jika ada
-  const qr = wa.getLastQr();
-  if (qr) {
-    console.log("Sending existing QR to", socket.id);
-    socket.emit("qr", qr);
-  } else {
-    socket.emit("log", "Menunggu QR dari server...");
-  }
+      // send existing QR
+      const q = wa.getLastQr();
+      if (q) {
+        console.log("Sending existing QR to", socket.id);
+        socket.emit("qr", q);
+      } else {
+        socket.emit("log", "Menunggu QR dari server...");
+      }
 
-  socket.emit("log", "[SERVER] connected");
+      // send status
+      wa.status().then(s => socket.emit("wa_state", s)).catch(()=>{});
 
-  // Event untuk refresh QR dari client
-  socket.on("refresh-qr", async () => {
-    try {
-      await wa.logout(); // ini akan memicu Baileys generate QR baru
-    } catch (e) {
-      socket.emit("log", `Error refresh QR: ${e.message}`);
-    }
-  });
-});
+      // handle refresh request
+      socket.on("refresh-qr", async ()=> {
+        try { await wa.logout(); } catch(e){ socket.emit("log", String(e)); }
+      });
+
+      // client wants contacts
+      socket.on("get-contacts", async () => {
+        try {
+          const contacts = await wa.getContacts();
+          socket.emit("contacts.list", contacts);
+        } catch (e) { socket.emit("log", String(e)); }
+      });
+    });
+
     server.listen(PORT, () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
