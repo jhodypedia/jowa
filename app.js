@@ -1,4 +1,3 @@
-// app.js
 import express from "express";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -8,7 +7,7 @@ import dotenv from "dotenv";
 import morgan from "morgan";
 import expressLayouts from "express-ejs-layouts";
 
-import db from "./models/index.js"; // loads models & sequelize
+import db from "./models/index.js"; // ✅ sekarang sudah berisi sequelize & semua model
 import authRoutes from "./routes/auth.js";
 import usersRoutes from "./routes/users.js";
 import messagesRoutes from "./routes/messages.js";
@@ -39,7 +38,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(express.static(path.join(process.cwd(), "public")));
 
-// mount routes
+// routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/messages", messagesRoutes);
@@ -47,60 +46,52 @@ app.use("/api/contacts", contactsRoutes);
 app.use("/api/wa", waRoutes);
 app.use("/api/logs", logsRoutes);
 
-// pages (EJS)
+// EJS pages
 app.get("/", (req, res) => res.render("login", { title: "Login" }));
 app.get("/wa", (req, res) => res.render("wa", { title: "Admin Panel" }));
 app.get("/wa-lite", (req, res) => res.render("wa-lite", { title: "Member Panel" }));
 
-// init DB + WA wrapper + socket
+// Startup
 (async () => {
   try {
     await db.sequelize.authenticate();
     await db.sequelize.sync({ alter: true });
     console.log("DB connected & synced");
 
-    // seed admin if not exists
-    try {
-      const adminUser = await db.User.findOne({ where: { role: "admin" } });
-      if (!adminUser) {
-        const username = process.env.SEED_ADMIN_USERNAME || "admin";
-        const email = process.env.SEED_ADMIN_EMAIL || "admin@example.com";
-        const password = process.env.SEED_ADMIN_PASS || "admin123";
-        await db.User.create({ username, email, password, role: "admin", premium: true });
-        console.log("Seed admin created:", username);
-      } else {
-        console.log("Admin exists:", adminUser.username);
-      }
-    } catch (e) { console.error("seed admin error", e); }
+    // seed admin
+    const adminUser = await db.User.findOne({ where: { role: "admin" } });
+    if (!adminUser) {
+      const username = process.env.SEED_ADMIN_USERNAME || "admin";
+      const email = process.env.SEED_ADMIN_EMAIL || "admin@example.com";
+      const password = process.env.SEED_ADMIN_PASS || "admin123";
+      await db.User.create({ username, email, password, role: "admin", premium: true });
+      console.log("Seed admin created:", username);
+    } else {
+      console.log("Admin exists:", adminUser.username);
+    }
 
+    // WA Wrapper
     const wa = new WAWrapper(io, db);
     app.locals.waWrapper = wa;
-
-    // init WA (auto-reconnect inside)
     await wa.init().catch((e) => console.error("WA init error:", e));
 
-    // socket.io
+    // Socket.io
     io.on("connection", (socket) => {
       console.log("socket connected", socket.id);
 
-      // send existing QR
       const q = wa.getLastQr();
       if (q) {
-        console.log("Sending existing QR to", socket.id);
         socket.emit("qr", q);
       } else {
         socket.emit("log", "Menunggu QR dari server...");
       }
 
-      // send status
       wa.status().then(s => socket.emit("wa_state", s)).catch(()=>{});
 
-      // handle refresh request
-      socket.on("refresh-qr", async ()=> {
-        try { await wa.logout(); } catch(e){ socket.emit("log", String(e)); }
+      socket.on("refresh-qr", async () => {
+        try { await wa.logout(); } catch (e) { socket.emit("log", String(e)); }
       });
 
-      // client wants contacts
       socket.on("get-contacts", async () => {
         try {
           const contacts = await wa.getContacts();
