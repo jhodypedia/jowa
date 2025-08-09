@@ -28,13 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnLogoutWA = document.getElementById('btn-logout-wa');
 
     async function updateWAStatus() {
-        const status = await apiFetch('/api/wa-status');
+        const status = await apiFetch('/api/wa/status');
         if (status.connected) {
             waState.textContent = 'Connection: Connected ✅';
             qrImg.style.display = 'none';
         } else {
             waState.textContent = 'Connection: Not Connected ❌';
-            const qr = await apiFetch('/api/wa-qr');
+            const qr = await apiFetch('/api/wa/qr');
             if (qr.qr) {
                 qrImg.src = qr.qr;
                 qrImg.style.display = 'block';
@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnLogoutWA) {
         btnLogoutWA.addEventListener('click', async () => {
-            const res = await apiFetch('/api/wa-logout', { method: 'POST' });
+            const res = await apiFetch('/api/wa/logout', { method: 'POST' });
             if (res.success) {
                 toastr.success('WA logged out');
                 await updateWAStatus();
