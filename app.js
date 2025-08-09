@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import morgan from "morgan";
+import expressLayouts from "express-ejs-layouts";
 
 import sequelize from "./config/database.js";
 import db from "./models/index.js";
@@ -27,9 +28,11 @@ const app = express();
 const server = http.createServer(app);
 const io = new SocketIOServer(server, { cors: { origin: process.env.ALLOWED_ORIGIN || "*" } });
 
-// view engine
+// view engine & layouts
 app.set("views", path.join(process.cwd(), "views"));
 app.set("view engine", "ejs");
+app.use(expressLayouts);
+app.set("layout", "layout");
 
 // middleware
 app.use(express.json());
@@ -45,8 +48,8 @@ app.use("/api/contacts", contactsRoutes);
 app.use("/api/wa", waRoutes);
 
 // simple pages
-app.get("/", (req, res) => res.render("login", { error: null }));
-app.get("/dashboard", (req, res) => res.render("dashboard"));
+app.get("/", (req, res) => res.render("login", { title: "Login", error: null }));
+app.get("/dashboard", (req, res) => res.render("dashboard", { title: "Dashboard" }));
 
 // start
 (async () => {
@@ -57,15 +60,12 @@ app.get("/dashboard", (req, res) => res.render("dashboard"));
 
     // WA wrapper instance
     const wa = new WAWrapper(io, db);
-    app.locals.waWrapper = wa; // use wa.send... etc in routes if needed
+    app.locals.waWrapper = wa;
 
-    // init WA (auto reconnect inside)
     await wa.init().catch((e) => console.error("WA init error:", e));
 
-    // socket.io
     io.on("connection", (socket) => {
       console.log("socket connected", socket.id);
-      // send existing QR if any
       const qr = wa.getLastQr();
       if (qr) socket.emit("qr", qr);
       socket.emit("log", "[SERVER] connected");
