@@ -1,0 +1,28 @@
+{
+  "name": "whatsapp-panel",
+  "type": "module",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "@adiwajshing/baileys": "",
+    "bcryptjs": "",
+    "body-parser": "",
+    "bootstrap": "",
+    "cookie-parser": "",
+    "dotenv": "",
+    "ejs": "",
+    "express": "",
+    "express-session": "",
+    "jsonwebtoken": "",
+    "jquery": "",
+    "mysql2": "",
+    "sequelize": "",
+    "socket.io": "",
+    "toastr": ""
+  },
+  "devDependencies": {
+    "nodemon": ""
+  }
+}
