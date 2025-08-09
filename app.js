@@ -16,6 +16,7 @@ import usersRoutes from "./routes/users.js";
 import messagesRoutes from "./routes/messages.js";
 import contactsRoutes from "./routes/contacts.js";
 import waRoutes from "./routes/wa.js";
+import logsRoutes from "./routes/logs.js";
 
 import WAWrapper from "./controllers/waController.js";
 
@@ -40,16 +41,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(express.static(path.join(process.cwd(), "public")));
 
-// mount routes
+// mount routes (API)
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api/contacts", contactsRoutes);
 app.use("/api/wa", waRoutes);
+app.use("/api/logs", logsRoutes);
 
-// simple pages
-app.get("/", (req, res) => res.render("login", { title: "Login", error: null }));
-app.get("/dashboard", (req, res) => res.render("dashboard", { title: "Dashboard" }));
+// pages
+app.get("/", (req, res) => res.render("login", { title: "Login" }));
+app.get("/wa", (req, res) => res.render("wa", { title: "Admin Panel" }));
+app.get("/wa-lite", (req, res) => res.render("wa-lite", { title: "Member Panel" }));
 
 // start
 (async () => {
@@ -58,12 +61,28 @@ app.get("/dashboard", (req, res) => res.render("dashboard", { title: "Dashboard"
     await db.sequelize.sync({ alter: true });
     console.log("DB connected & synced");
 
-    // WA wrapper instance
+    // seed admin if not exists
+    try {
+      const adminUser = await db.User.findOne({ where: { role: "admin" } });
+      if (!adminUser) {
+        const username = process.env.SEED_ADMIN_USERNAME || "admin";
+        const email = process.env.SEED_ADMIN_EMAIL || "admin@example.com";
+        const password = process.env.SEED_ADMIN_PASS || "admin123";
+        await db.User.create({ username, email, password, role: "admin", premium: true });
+        console.log("Seed admin created:", username);
+      } else {
+        console.log("Admin exists:", adminUser.username);
+      }
+    } catch (e) { console.error("seed admin error", e); }
+
+    // WA wrapper
     const wa = new WAWrapper(io, db);
     app.locals.waWrapper = wa;
 
-    await wa.init().catch((e) => console.error("WA init error:", e));
+    // init WA (auto-reconnect inside)
+    wa.init().catch((e) => console.error("WA init error:", e));
 
+    // socket.io
     io.on("connection", (socket) => {
       console.log("socket connected", socket.id);
       const qr = wa.getLastQr();
