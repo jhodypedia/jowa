@@ -3,25 +3,87 @@
 <head>
   <meta charset="UTF-8">
   <title><%= title %></title>
-  <link rel="stylesheet" href="/css/style.css">
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Font Awesome -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+
+  <!-- Toastr CSS -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet">
+
+  <!-- Custom CSS -->
+  <style>
+    body {
+      background: linear-gradient(135deg, #4e73df, #1cc88a);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .login-card {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      width: 100%;
+      max-width: 380px;
+    }
+    .login-card h2 {
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .input-group-text {
+      background-color: #f8f9fc;
+    }
+    .btn-login {
+      background-color: #4e73df;
+      border: none;
+    }
+    .btn-login:hover {
+      background-color: #2e59d9;
+    }
+  </style>
 </head>
 <body>
-  <div class="login-container">
-    <h2>Login</h2>
+
+  <div class="login-card">
+    <h2><i class="fas fa-sign-in-alt me-2"></i>Login</h2>
     <form id="loginForm">
-      <label>Username or Email</label>
-      <input type="text" id="username" required>
-      <label>Password</label>
-      <input type="password" id="password" required>
-      <button type="submit">Login</button>
+      <div class="mb-3">
+        <label class="form-label">Username or Email</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="fas fa-user"></i></span>
+          <input type="text" id="username" class="form-control" placeholder="Enter username or email" required>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Password</label>
+        <div class="input-group">
+          <span class="input-group-text"><i class="fas fa-lock"></i></span>
+          <input type="password" id="password" class="form-control" placeholder="Enter password" required>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-login w-100 text-white">
+        <i class="fas fa-sign-in-alt me-1"></i> Login
+      </button>
     </form>
-    <div id="loginMessage"></div>
   </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Toastr JS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       const form = document.getElementById("loginForm");
-      const messageBox = document.getElementById("loginMessage");
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -29,7 +91,7 @@
         const username = document.getElementById("username").value.trim();
         const password = document.getElementById("password").value.trim();
 
-        messageBox.textContent = "Processing...";
+        toastr.info("Processing login...", "Please wait");
 
         try {
           const res = await fetch("/api/auth/login", {
@@ -41,21 +103,17 @@
           const data = await res.json();
 
           if (!res.ok) {
-            messageBox.textContent = data.message || "Login failed";
-            messageBox.style.color = "red";
+            toastr.error(data.message || "Login failed", "Error");
             return;
           }
 
-          messageBox.textContent = "Login successful!";
-          messageBox.style.color = "green";
+          toastr.success("Login successful!", "Success");
 
-          // Redirect after login
           setTimeout(() => {
-            window.location.href = "/wa"; // halaman admin panel
-          }, 800);
+            window.location.href = "/wa"; // redirect ke admin panel
+          }, 1000);
         } catch (err) {
-          messageBox.textContent = "Error connecting to server";
-          messageBox.style.color = "red";
+          toastr.error("Error connecting to server", "Error");
         }
       });
     });
