@@ -84,12 +84,28 @@ app.get("/wa-lite", (req, res) => res.render("wa-lite", { title: "Member Panel" 
 
     // socket.io
     io.on("connection", (socket) => {
-      console.log("socket connected", socket.id);
-      const qr = wa.getLastQr();
-      if (qr) socket.emit("qr", qr);
-      socket.emit("log", "[SERVER] connected");
-    });
+  console.log("socket connected", socket.id);
 
+  // Kirim QR terakhir jika ada
+  const qr = wa.getLastQr();
+  if (qr) {
+    console.log("Sending existing QR to", socket.id);
+    socket.emit("qr", qr);
+  } else {
+    socket.emit("log", "Menunggu QR dari server...");
+  }
+
+  socket.emit("log", "[SERVER] connected");
+
+  // Event untuk refresh QR dari client
+  socket.on("refresh-qr", async () => {
+    try {
+      await wa.logout(); // ini akan memicu Baileys generate QR baru
+    } catch (e) {
+      socket.emit("log", `Error refresh QR: ${e.message}`);
+    }
+  });
+});
     server.listen(PORT, () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
