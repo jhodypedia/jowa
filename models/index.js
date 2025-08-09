@@ -5,10 +5,12 @@ import Contact from "./Contact.js";
 import Log from "./Log.js";
 import "./associations.js";
 
-export {
-  sequelize,
-  User,
-  Message,
-  Contact,
-  Log
-};
+// Gabungkan semua model ke dalam objek db
+const db = {};
+db.sequelize = sequelize;
+db.User = User;
+db.Message = Message;
+db.Contact = Contact;
+db.Log = Log;
+
+export default db;
