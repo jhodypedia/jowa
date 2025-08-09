@@ -4,7 +4,7 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion
 } from "@whiskeysockets/baileys";
-import pino from "pino";
+import P from "pino";
 import qrcode from "qrcode";
 import fs from "fs";
 import path from "path";
