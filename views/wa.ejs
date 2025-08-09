@@ -4,23 +4,26 @@
   <%- include('partials/sidebar') %>
 
   <div class="flex-fill p-4" id="mainContent">
-    <nav class="d-flex justify-content-end mb-3">
-      <div class="me-3 text-end">
-        <div id="nav-user-name" class="fw-bold small">—</div>
-        <div id="nav-user-role" class="small text-muted">—</div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0">Admin Panel</h4>
+        <small class="text-muted">Kelola WA, kirim pesan, dan lihat logs</small>
       </div>
-      <button id="btn-logout-top" class="btn btn-outline-danger btn-sm">Logout</button>
-    </nav>
+      <div class="text-end d-md-none">
+        <div id="nav-user-name-sm" class="fw-bold small">—</div>
+        <div id="nav-user-role-sm" class="small text-muted">—</div>
+      </div>
+    </div>
 
     <div id="pageContent">
+      <!-- QR + status card -->
       <div class="card mb-3">
         <div class="card-body text-center">
           <h5 class="mb-1">QR Authentication</h5>
-          <div id="qrBox" class="my-3">
-            <img id="qrImage" src="" alt="QR" style="max-width:300px; display:none;">
-            <pre id="qrRaw" class="small text-muted" style="display:none;"></pre>
+          <div id="qrBox" class="my-3 d-flex justify-content-center align-items-center" style="min-height:140px;">
+            <img id="qrImage" src="" alt="QR" style="max-width:280px; display:none;">
           </div>
-          <div>
+          <div class="mb-2">
             <button id="btn-refresh-qr" class="btn btn-outline-secondary btn-sm">Refresh QR</button>
             <button id="btn-logout-wa" class="btn btn-danger btn-sm">Force Logout WA</button>
           </div>
@@ -28,44 +31,29 @@
         </div>
       </div>
 
+      <!-- adminPages populated by admin.js -->
       <div id="adminPages"></div>
     </div>
   </div>
 </div>
 
-<!-- User Modal -->
-<div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
+<!-- modal user (create/edit) -->
+<div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <form id="userModalForm" class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="userModalLabel">Buat User</h5>
+        <h5 id="userModalLabel" class="modal-title">Buat User</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" name="id" value="">
-        <div class="mb-3">
-          <label class="form-label">Username</label>
-          <input name="username" class="form-control" required>
+        <div class="mb-3"><label class="form-label">Username</label><input name="username" class="form-control" required></div>
+        <div class="mb-3"><label class="form-label">Email</label><input name="email" type="email" class="form-control" required></div>
+        <div class="mb-3"><label class="form-label">Password</label><input name="password" type="password" class="form-control" placeholder="Kosongkan jika tidak diubah"></div>
+        <div class="mb-3"><label class="form-label">Role</label>
+          <select name="role" class="form-select"><option value="member">member</option><option value="admin">admin</option></select>
         </div>
-        <div class="mb-3">
-          <label class="form-label">Email</label>
-          <input name="email" type="email" class="form-control" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Password</label>
-          <input name="password" type="password" class="form-control" placeholder="Kosongkan jika tidak diubah">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Role</label>
-          <select name="role" class="form-select">
-            <option value="member">member</option>
-            <option value="admin">admin</option>
-          </select>
-        </div>
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="userPremium" name="premium">
-          <label class="form-check-label" for="userPremium">Premium</label>
-        </div>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="userPremium" name="premium"><label class="form-check-label" for="userPremium">Premium</label></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
@@ -75,115 +63,4 @@
   </div>
 </div>
 
-<!-- Script QRCode -->
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="/socket.io/socket.io.js"></script>
-<% scripts = `
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const navUserName = document.getElementById('nav-user-name');
-    const navUserRole = document.getElementById('nav-user-role');
-    const waState = document.getElementById('waState');
-    const qrBox = document.getElementById('qrBox');
-    const btnRefreshQr = document.getElementById('btn-refresh-qr');
-    const btnLogoutWa = document.getElementById('btn-logout-wa');
-    const btnLogoutTop = document.getElementById('btn-logout-top');
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-        window.location.href = '/login';
-        return;
-    }
-
-    // ===== Ambil info user =====
-    fetch('/api/auth/me', {
-        headers: { Authorization: 'Bearer ' + token }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.ok) {
-            navUserName.textContent = data.user.username;
-            navUserRole.textContent = data.user.role;
-        }
-    })
-    .catch(console.error);
-
-    // ===== Socket.io koneksi =====
-    const socket = io({ auth: { token } });
-
-    socket.on('connect', () => {
-        console.log('[Socket] Connected');
-    });
-
-    socket.on('wa_state', state => {
-        waState.textContent = 'Connection: ' + state;
-    });
-
-    socket.on('qr', qr => {
-        qrBox.innerHTML = '';
-
-        if (qr.startsWith('data:image')) {
-            const img = document.createElement('img');
-            img.src = qr;
-            img.style.maxWidth = '300px';
-            qrBox.appendChild(img);
-        } else {
-            const qrDiv = document.createElement('div');
-            qrBox.appendChild(qrDiv);
-            new QRCode(qrDiv, {
-                text: qr,
-                width: 300,
-                height: 300
-            });
-        }
-
-        waState.textContent = 'Connection: QR Code available';
-    });
-
-    // ===== Tombol Refresh QR =====
-    btnRefreshQr.addEventListener('click', () => {
-        fetch('/wa/qr', {
-            headers: { Authorization: 'Bearer ' + token }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.ok && data.qr) {
-                socket.emit('manual-qr', data.qr);
-            } else {
-                alert('QR tidak tersedia');
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Gagal ambil QR');
-        });
-    });
-
-    // ===== Tombol Force Logout WA =====
-    btnLogoutWa.addEventListener('click', () => {
-        if (!confirm('Yakin mau force logout WA?')) return;
-        fetch('/wa/logout', {
-            method: 'DELETE',
-            headers: { Authorization: 'Bearer ' + token }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.ok) {
-                alert('Berhasil logout WA');
-                waState.textContent = 'Connection: Logged out';
-                qrBox.innerHTML = '';
-            } else {
-                alert('Gagal logout WA');
-            }
-        })
-        .catch(console.error);
-    });
-
-    // ===== Logout dari panel admin =====
-    btnLogoutTop.addEventListener('click', () => {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-    });
-});
-</script>
-` %>
+<% scripts = `<script src="/js/admin.js"></script>` %>
