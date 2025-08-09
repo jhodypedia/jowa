@@ -1,9 +1,6 @@
 // controllers/waController.js
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion
-} from "@whiskeysockets/baileys";
+import baileys from "@whiskeysockets/baileys";
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = baileys;
 import P from "pino";
 import qrcode from "qrcode";
 import fs from "fs";
